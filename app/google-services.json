@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "650502517738",
+    "project_id": "neotv-cee63",
+    "storage_bucket": "neotv-cee63.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:650502517738:android:ce2a90f5511e39e5d3f893",
+        "android_client_info": {
+          "package_name": "com.aistudio.neotv.cee63"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsJMxn8LK3l1vL_dooB1pUTAdo9Y_xEtw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
