@@ -10,5 +10,7 @@ data class Channel(
     val logoUrl: String? = null,
     val category: String = "All",
     val country: String = "Global",
-    val channelNumber: Int = 0
+    val channelNumber: Int = 0,
+    val isActive: Boolean = true,
+    val resolution: String = "720p"
 )

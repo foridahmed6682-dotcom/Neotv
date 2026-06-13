@@ -243,4 +243,26 @@ class IptvRepository(
                 .addOnFailureListener { continuation.resume(Result.failure(it)) }
         }
     }
+
+    suspend fun updateChannelStatus(url: String, isActive: Boolean) = withContext(Dispatchers.IO) {
+        channelDao.updateChannelStatus(url, isActive)
+    }
+
+    suspend fun verifyChannelLink(url: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build()
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .head()
+                .build()
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful || response.code in 200..399
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

@@ -129,13 +129,24 @@ object M3uParser {
                 category = "Entertainment"
             }
 
+            // Infer resolution from name
+            val lowerName = channelName.lowercase()
+            val resolution = when {
+                lowerName.contains("fhd") || lowerName.contains("1080") || lowerName.contains("1080p") -> "1080p"
+                lowerName.contains("4k") || lowerName.contains("uhd") || lowerName.contains("2160") -> "4K"
+                lowerName.contains("sd") || lowerName.contains("480") || lowerName.contains("360") || lowerName.contains("480p") -> "480p"
+                else -> "720p" // Default HD
+            }
+
             return Channel(
                 url = streamUrl,
                 name = channelName,
                 logoUrl = if (logoUrl.isNullOrEmpty()) null else logoUrl,
                 category = category,
                 country = country,
-                channelNumber = index
+                channelNumber = index,
+                isActive = true,
+                resolution = resolution
             )
         } catch (e: Exception) {
             e.printStackTrace()

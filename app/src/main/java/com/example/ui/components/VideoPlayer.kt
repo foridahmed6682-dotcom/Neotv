@@ -47,7 +47,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
@@ -69,7 +72,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun VideoPlayer(
     channel: Channel?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFullscreen: Boolean = false,
+    isBackgroundPlayEnabled: Boolean = false,
+    isInPipMode: Boolean = false,
+    onFullscreenToggle: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var isPlaying by remember { mutableStateOf(true) }
@@ -171,6 +178,34 @@ fun VideoPlayer(
         onDispose {
             exoPlayer.removeListener(listener)
             exoPlayer.release()
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, isBackgroundPlayEnabled) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (!isBackgroundPlayEnabled) {
+                        exoPlayer.pause()
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    if (!isBackgroundPlayEnabled) {
+                        exoPlayer.pause()
+                    }
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (!isBackgroundPlayEnabled && isPlaying && !exoPlayer.isPlaying) {
+                        exoPlayer.play()
+                    }
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -307,7 +342,7 @@ fun VideoPlayer(
 
         // Custom Overlay Controls
         AnimatedVisibility(
-            visible = showControls,
+            visible = showControls && !isInPipMode,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
@@ -500,6 +535,23 @@ fun VideoPlayer(
                             tint = Color.White
                         )
                     }
+
+                    SpacerWidth(8)
+
+                    // Fullscreen Toggle Icon
+                    if (onFullscreenToggle != null) {
+                        IconButton(
+                            onClick = onFullscreenToggle,
+                            modifier = Modifier
+                                .testTag("player_fullscreen_toggle_btn")
+                                .focusable()
+                        ) {
+                            FullscreenIcon(
+                                tint = if (isFullscreen) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -541,6 +593,32 @@ fun PlayPauseToggle(
 @Composable
 fun SpacerWidth(dp: Int) {
     androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(dp.dp))
+}
+
+@Composable
+fun FullscreenIcon(tint: Color = Color.White, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier = modifier.size(16.dp)) {
+        val w = size.width
+        val h = size.height
+        val lineLen = w * 0.35f
+        val strokeW = 1.8.dp.toPx()
+        
+        // Top-Left corner
+        drawLine(tint, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(lineLen, 0f), strokeWidth = strokeW)
+        drawLine(tint, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(0f, lineLen), strokeWidth = strokeW)
+        
+        // Top-Right corner
+        drawLine(tint, androidx.compose.ui.geometry.Offset(w, 0f), androidx.compose.ui.geometry.Offset(w - lineLen, 0f), strokeWidth = strokeW)
+        drawLine(tint, androidx.compose.ui.geometry.Offset(w, 0f), androidx.compose.ui.geometry.Offset(w, lineLen), strokeWidth = strokeW)
+        
+        // Bottom-Left corner
+        drawLine(tint, androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(lineLen, h), strokeWidth = strokeW)
+        drawLine(tint, androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(0f, h - lineLen), strokeWidth = strokeW)
+        
+        // Bottom-Right corner
+        drawLine(tint, androidx.compose.ui.geometry.Offset(w, h), androidx.compose.ui.geometry.Offset(w - lineLen, h), strokeWidth = strokeW)
+        drawLine(tint, androidx.compose.ui.geometry.Offset(w, h), androidx.compose.ui.geometry.Offset(w, h - lineLen), strokeWidth = strokeW)
+    }
 }
 
 @UnstableApi

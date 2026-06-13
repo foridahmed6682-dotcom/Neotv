@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Input
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -87,6 +89,7 @@ import com.example.data.model.Channel
 import com.example.ui.components.AdminPanelDialog
 import com.example.ui.components.SponsorMarquee
 import com.example.ui.components.VideoPlayer
+import com.example.ui.components.FullscreenIcon
 import com.example.ui.viewmodel.IptvUiState
 import com.example.ui.viewmodel.IptvViewModel
 
@@ -103,6 +106,7 @@ fun MainScreen(
 
     var showCustomUrlInput by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf(state.playlistUrl) }
+    var showLoginDialog by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
     val rootFocusRequester = remember { FocusRequester() }
@@ -128,6 +132,11 @@ fun MainScreen(
         }
     }
 
+    // Intercept hardware BACK key on Android/TV to exit fullscreen
+    BackHandler(enabled = state.isFullscreen && state.selectedChannel != null) {
+        viewModel.toggleFullscreen(false)
+    }
+
     // Root interceptor Box for TV Remote control numeric hotkeys
     Box(
         modifier = modifier
@@ -142,6 +151,9 @@ fun MainScreen(
                         val digit = nativeCode - KeyEvent.KEYCODE_0
                         viewModel.onNumericKeyPress(digit)
                         true
+                    } else if (state.isFullscreen && (nativeCode == KeyEvent.KEYCODE_BACK || nativeCode == KeyEvent.KEYCODE_ESCAPE)) {
+                        viewModel.toggleFullscreen(false)
+                        true
                     } else {
                         false
                     }
@@ -152,12 +164,28 @@ fun MainScreen(
             .focusRequester(rootFocusRequester)
             .focusable()
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Premium Header Tab
-            HeaderSection(
-                onAdminClick = { viewModel.toggleAdminChallenge(true) },
-                onToggleCustomUrl = { showCustomUrlInput = !showCustomUrlInput }
+        if ((state.isFullscreen || state.isInPipMode) && state.selectedChannel != null) {
+            VideoPlayerBox(
+                state = state,
+                isFullscreen = state.isFullscreen,
+                onFullscreenToggle = { viewModel.toggleFullscreen(false) },
+                modifier = Modifier.fillMaxSize()
             )
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                val userEmail by viewModel.userEmailState.collectAsState()
+                // Premium Header Tab
+                HeaderSection(
+                    userEmail = userEmail,
+                    selectedChannel = state.selectedChannel,
+                    isBackgroundPlayEnabled = state.isBackgroundPlayEnabled,
+                    onToggleFullscreen = { viewModel.toggleFullscreen() },
+                    onToggleBackgroundPlay = { viewModel.toggleBackgroundPlay() },
+                    onLoginClick = { showLoginDialog = true },
+                    onLogoutClick = { viewModel.logoutUser() },
+                    onAdminClick = { viewModel.toggleAdminChallenge(true) },
+                    onToggleCustomUrl = { showCustomUrlInput = !showCustomUrlInput }
+                )
 
             // Collapsible Playlist Downloader / Settings Row
             AnimatedVisibility(
@@ -265,6 +293,8 @@ fun MainScreen(
                             // Video player takes core focus
                             VideoPlayerBox(
                                 state = state,
+                                isFullscreen = false,
+                                onFullscreenToggle = { viewModel.toggleFullscreen() },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16 / 9f)
@@ -314,6 +344,8 @@ fun MainScreen(
                         // Top segment: player
                         VideoPlayerBox(
                             state = state,
+                            isFullscreen = false,
+                            onFullscreenToggle = { viewModel.toggleFullscreen() },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(16 / 9f)
@@ -347,6 +379,7 @@ fun MainScreen(
                     }
                 }
             }
+        }
         }
 
         // TV Remote Hotkey overlay switch prompt
@@ -412,17 +445,40 @@ fun MainScreen(
                 onRemoveAdmin = { viewModel.removeAdmin(it) }
             )
         }
+
+        if (showLoginDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable(enabled = true, onClick = {}) // block pass-through click events
+            ) {
+                LoginScreen(
+                    viewModel = viewModel,
+                    onDismiss = { showLoginDialog = false }
+                )
+            }
+        }
     }
 }
 
 @Composable
 fun VideoPlayerBox(
     state: IptvUiState,
+    isFullscreen: Boolean = false,
+    onFullscreenToggle: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier) {
         if (state.selectedChannel != null) {
-            VideoPlayer(channel = state.selectedChannel, modifier = Modifier.fillMaxSize())
+            VideoPlayer(
+                channel = state.selectedChannel,
+                isFullscreen = isFullscreen,
+                isBackgroundPlayEnabled = state.isBackgroundPlayEnabled,
+                isInPipMode = state.isInPipMode,
+                onFullscreenToggle = onFullscreenToggle,
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
             // Elegant player placeholder
             Box(
@@ -456,16 +512,49 @@ fun VideoPlayerBox(
 }
 
 @Composable
+fun BackgroundPlayIcon(tint: Color = Color.White, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier = modifier.size(16.dp)) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 1.8.dp.toPx()
+        
+        // Large outline rectangle (representing the app/screen)
+        drawRect(
+            color = tint.copy(alpha = 0.5f),
+            topLeft = androidx.compose.ui.geometry.Offset(0f, 0f),
+            size = androidx.compose.ui.geometry.Size(w * 0.9f, h * 0.9f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeW)
+        )
+        
+        // Small filled rectangle in bottom-right (representing PiP window)
+        drawRect(
+            color = tint,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.45f, h * 0.45f),
+            size = androidx.compose.ui.geometry.Size(w * 0.5f, h * 0.5f)
+        )
+    }
+}
+
+@Composable
 fun HeaderSection(
+    userEmail: String?,
+    selectedChannel: Channel?,
+    isBackgroundPlayEnabled: Boolean,
+    onToggleFullscreen: () -> Unit,
+    onToggleBackgroundPlay: () -> Unit,
+    onLoginClick: () -> Unit,
+    onLogoutClick: () -> Unit,
     onAdminClick: () -> Unit,
     onToggleCustomUrl: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFF0F172A)) // Premium Dark Slate base
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Styled Branded Theme App Label
@@ -502,6 +591,92 @@ fun HeaderSection(
             )
         }
 
+        if (selectedChannel != null) {
+            SpacerWidth(12)
+            var isFsFocused by remember { mutableStateOf(false) }
+            Button(
+                onClick = onToggleFullscreen,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isFsFocused) MaterialTheme.colorScheme.primary else Color(0xFF1E293B)
+                ),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isFsFocused) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .onFocusChanged { isFsFocused = it.isFocused }
+                    .focusable()
+                    .testTag("header_fullscreen_button")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FullscreenIcon(tint = if (isFsFocused) Color.Black else Color.White)
+                    SpacerWidth(6)
+                    Text(
+                        text = "ফুল স্ক্রিন (Full Screen)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isFsFocused) Color.Black else Color.White
+                    )
+                }
+            }
+
+            SpacerWidth(8)
+            var isBgFocused by remember { mutableStateOf(false) }
+            Button(
+                onClick = onToggleBackgroundPlay,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isBgFocused) {
+                        MaterialTheme.colorScheme.primary 
+                    } else if (isBackgroundPlayEnabled) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                    } else {
+                        Color(0xFF1E293B)
+                    }
+                ),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isBgFocused) {
+                        Color.White 
+                    } else if (isBackgroundPlayEnabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    }
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .onFocusChanged { isBgFocused = it.isFocused }
+                    .focusable()
+                    .testTag("header_background_play_button")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BackgroundPlayIcon(
+                        tint = if (isBgFocused) {
+                            Color.Black 
+                        } else if (isBackgroundPlayEnabled) {
+                            MaterialTheme.colorScheme.primary 
+                        } else {
+                            Color.White
+                        }
+                    )
+                    SpacerWidth(6)
+                    Text(
+                        text = if (isBackgroundPlayEnabled) "ব্যাকগ্রাউন্ড প্লে (চালু)" else "ব্যাকগ্রাউন্ড প্লে (বন্ধ)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isBgFocused) {
+                            Color.Black 
+                        } else if (isBackgroundPlayEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            Color.White
+                        }
+                    )
+                }
+            }
+        }
+
         androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
 
         // Sync Playlist Trigger
@@ -529,6 +704,89 @@ fun HeaderSection(
                 tint = Color.LightGray
             )
         }
+
+        SpacerWidth(4)
+
+        // Three-dot Options dropdown menu hosting login system
+        Box {
+            IconButton(
+                onClick = { showMenu = true },
+                modifier = Modifier.testTag("auth_three_dots_menu_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "More Options",
+                    tint = Color.White
+                )
+            }
+
+            androidx.compose.material3.DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false },
+                modifier = Modifier.background(Color(0xFF0F172A))
+            ) {
+                if (userEmail == null) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "লগইন / রেজিস্টার (Sign In)",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        onClick = {
+                            showMenu = false
+                            onLoginClick()
+                        }
+                    )
+                } else {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = "একাউন্টঃ",
+                                    fontSize = 10.sp,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    text = userEmail,
+                                    fontSize = 12.sp,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (userEmail.trim().lowercase() == "foridahmed6682@gmail.com") {
+                                    Text(
+                                        text = "👑 প্রধান এডমিন (Owner)",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
+                        },
+                        onClick = {},
+                        enabled = false
+                    )
+                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF1E293B))
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "বাহির হোন (Sign Out)",
+                                fontSize = 13.sp,
+                                color = Color(0xFFFDA4AF),
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        onClick = {
+                            showMenu = false
+                            onLogoutClick()
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -538,7 +796,7 @@ fun CategoryRow(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val categories = listOf("All", "News", "Sports", "Entertainment", "Movies", "Music")
+    val categories = listOf("All", "FIFA", "News", "Sports", "Entertainment", "Movies", "Music")
 
     LazyRow(
         modifier = modifier
@@ -548,8 +806,18 @@ fun CategoryRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         items(categories) { category ->
+            val bilingualTitle = when (category) {
+                "All" -> "All (সব চ্যানেল)"
+                "FIFA" -> "FIFA (ফিফা)"
+                "News" -> "News (খবর)"
+                "Sports" -> "Sports (খেলা)"
+                "Entertainment" -> "Entertainment (বিনোদন)"
+                "Movies" -> "Movies (সিনেমা)"
+                "Music" -> "Music (গান)"
+                else -> category
+            }
             CategoryPill(
-                title = category,
+                title = bilingualTitle,
                 isSelected = category == selected,
                 onClick = { onSelect(category) }
             )
@@ -736,6 +1004,7 @@ fun ChannelRowItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var isFocused by remember { mutableStateOf(false) }
 
     Card(
@@ -837,6 +1106,77 @@ fun ChannelRowItem(
                         fontWeight = FontWeight.Medium,
                         color = Color.Gray
                     )
+                }
+            }
+
+            // Resolution selection system pill (on right side of channel name)
+            var showOptions by remember { mutableStateOf(false) }
+            var currentResSelection by remember { mutableStateOf(channel.resolution) }
+
+            Box(
+                modifier = Modifier.padding(horizontal = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else Color(0xFF1E293B)
+                        )
+                        .border(
+                            width = 0.5.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            else Color(0xFF334155),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable { showOptions = true }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = currentResSelection,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray
+                    )
+                    SpacerWidth(2)
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Quality Select",
+                        tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+
+                androidx.compose.material3.DropdownMenu(
+                    expanded = showOptions,
+                    onDismissRequest = { showOptions = false },
+                    modifier = Modifier.background(Color(0xFF0F172A))
+                ) {
+                    Text(
+                        text = "Receiver Quality",
+                        color = Color.Gray,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF1E293B))
+                    listOf("1080p FHD", "720p HD", "480p SD").forEach { resOption ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = resOption,
+                                    fontSize = 12.sp,
+                                    color = if (currentResSelection.lowercase().contains(resOption.substringBefore(" ").lowercase())) MaterialTheme.colorScheme.primary else Color.White
+                                )
+                            },
+                            onClick = {
+                                currentResSelection = resOption.substringBefore(" ")
+                                showOptions = false
+                                Toast.makeText(context, "${channel.name} set to $resOption via IPTV Resolution System", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 }
             }
 
