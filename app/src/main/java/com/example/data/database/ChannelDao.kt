@@ -9,10 +9,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChannelDao {
-    @Query("SELECT * FROM channels WHERE isActive = 1 ORDER BY country = 'Bangladesh' DESC, country = 'India' DESC, responseTimeMs ASC, name ASC")
+    @Query("SELECT * FROM channels WHERE isActive = 1 ORDER BY (CASE WHEN country = 'Bangladesh' THEN 1 WHEN country = 'India' THEN 2 ELSE 3 END) ASC, responseTimeMs ASC, name ASC")
     fun getAllChannelsFlow(): Flow<List<Channel>>
 
-    @Query("SELECT * FROM channels WHERE isActive = 1 AND category = :category ORDER BY country = 'Bangladesh' DESC, country = 'India' DESC, responseTimeMs ASC, name ASC")
+    @Query("SELECT * FROM channels")
+    suspend fun getAllRawChannels(): List<Channel>
+
+    @Query("SELECT * FROM channels WHERE isActive = 1 AND category = :category ORDER BY (CASE WHEN country = 'Bangladesh' THEN 1 WHEN country = 'India' THEN 2 ELSE 3 END) ASC, responseTimeMs ASC, name ASC")
     fun getChannelsByCategoryFlow(category: String): Flow<List<Channel>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

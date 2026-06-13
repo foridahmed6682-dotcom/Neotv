@@ -1,461 +1,345 @@
 package com.example.ui.screens
 
-import android.view.KeyEvent
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import android.content.res.Configuration
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.DesktopMac
-import androidx.compose.material.icons.filled.Input
-import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.activity.compose.BackHandler
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.Channel
-import com.example.ui.components.AdminPanelDialog
+import com.example.ui.components.AdminPanel
 import com.example.ui.components.SponsorMarquee
 import com.example.ui.components.VideoPlayer
-import com.example.ui.components.FullscreenIcon
-import com.example.ui.viewmodel.IptvUiState
 import com.example.ui.viewmodel.IptvViewModel
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MainScreen(
     viewModel: IptvViewModel,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val state by viewModel.uiState.collectAsState()
+    val channels by viewModel.channels.collectAsState()
     val activeSponsors by viewModel.activeSponsors.collectAsState()
-    val channels by viewModel.filteredChannels.collectAsState()
+    val selectedChannel by viewModel.selectedChannel.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val isValidating by viewModel.isValidating.collectAsState()
 
-    var showCustomUrlInput by remember { mutableStateOf(false) }
-    var inputUrl by remember { mutableStateOf(state.playlistUrl) }
-    var showLoginDialog by remember { mutableStateOf(false) }
+    var showAdminPanel by remember { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
 
-    val focusManager = LocalFocusManager.current
-    val rootFocusRequester = remember { FocusRequester() }
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    // Preloaded playlist shortcuts
-    val playlistPresets = listOf(
-        Pair("🇧🇩 BD Channels", "https://iptv-org.github.io/iptv/countries/bd.m3u"),
-        Pair("🏆 Sports Live", "https://iptv-org.github.io/iptv/categories/sports.m3u"),
-        Pair("📰 World News", "https://iptv-org.github.io/iptv/categories/news.m3u"),
-        Pair("🌐 Global Mixed", "https://iptv-org.github.io/iptv/index.m3u")
-    )
+    // Split loaded channels into country headers
+    val bangladeshChannels = remember(channels) { channels.filter { it.country == "Bangladesh" } }
+    val indiaChannels = remember(channels) { channels.filter { it.country == "India" } }
+    val globalChannels = remember(channels) { channels.filter { it.country != "Bangladesh" && it.country != "India" } }
 
-    // Request initial focus on key layout to receive hotkeys
-    LaunchedEffect(Unit) {
-        rootFocusRequester.requestFocus()
-    }
-
-    // Capture standard short toast messages
-    LaunchedEffect(state.message) {
-        if (state.message != null) {
-            Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
-            viewModel.clearMessage()
-        }
-    }
-
-    // Intercept hardware BACK key on Android/TV to exit fullscreen
-    BackHandler(enabled = state.isFullscreen && state.selectedChannel != null) {
-        viewModel.toggleFullscreen(false)
-    }
-
-    // Root interceptor Box for TV Remote control numeric hotkeys
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFF0B0F19)) // Premium Deep Dark Slate
-            .onKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                    val keyCode = keyEvent.key.keyCode
-                    // Map Kotlin external code to native keycodes
-                    val nativeCode = keyEvent.nativeKeyEvent.keyCode
-                    if (nativeCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
-                        val digit = nativeCode - KeyEvent.KEYCODE_0
-                        viewModel.onNumericKeyPress(digit)
-                        true
-                    } else if (state.isFullscreen && (nativeCode == KeyEvent.KEYCODE_BACK || nativeCode == KeyEvent.KEYCODE_ESCAPE)) {
-                        viewModel.toggleFullscreen(false)
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-            .focusRequester(rootFocusRequester)
-            .focusable()
-    ) {
-        if ((state.isFullscreen || state.isInPipMode) && state.selectedChannel != null) {
-            VideoPlayerBox(
-                state = state,
-                isFullscreen = state.isFullscreen,
-                onFullscreenToggle = { viewModel.toggleFullscreen(false) },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                val userEmail by viewModel.userEmailState.collectAsState()
-                // Premium Header Tab
-                HeaderSection(
-                    userEmail = userEmail,
-                    selectedChannel = state.selectedChannel,
-                    isBackgroundPlayEnabled = state.isBackgroundPlayEnabled,
-                    onToggleFullscreen = { viewModel.toggleFullscreen() },
-                    onToggleBackgroundPlay = { viewModel.toggleBackgroundPlay() },
-                    onLoginClick = { showLoginDialog = true },
-                    onLogoutClick = { viewModel.logoutUser() },
-                    onAdminClick = { viewModel.toggleAdminChallenge(true) },
-                    onToggleCustomUrl = { showCustomUrlInput = !showCustomUrlInput }
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = Color(0xFF090D16), // Deeper cosmic slate black background
+    ) { innerPadding ->
+        if (isFullscreen && selectedChannel != null) {
+            // Full Screen Mode Overlay (Removes all side cards, status bar, and header)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                VideoPlayer(
+                    url = selectedChannel!!.url,
+                    modifier = Modifier.fillMaxSize(),
+                    isFullscreen = true
                 )
 
-            // Collapsible Playlist Downloader / Settings Row
-            AnimatedVisibility(
-                visible = showCustomUrlInput,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Card(
+                // Minimize Overlay controller
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    border = BorderStroke(1.dp, Color(0xFF334155))
+                        .align(Alignment.TopEnd)
+                        .padding(24.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable { isFullscreen = false }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Download Custom Live IPTV Playlist",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        SpacerHeight(8)
-
-                        // URL input field
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = inputUrl,
-                                onValueChange = { inputUrl = it },
-                                placeholder = { Text("Paste M3U raw playlist link...") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("custom_m3u_input_field"),
-                                singleLine = true,
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            SpacerWidth(8)
-                            Button(
-                                onClick = {
-                                    focusManager.clearFocus()
-                                    viewModel.loadPlaylist(inputUrl)
-                                    showCustomUrlInput = false
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .height(56.dp)
-                                    .testTag("submit_m3u_button")
-                            ) {
-                                Text("Sync Playlist")
-                            }
-                        }
-
-                        SpacerHeight(12)
-
-                        // Preset playlist buttons
-                        Text(
-                            text = "Preset Portals:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.LightGray
-                        )
-                        SpacerHeight(6)
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            playlistPresets.forEach { preset ->
-                                Button(
-                                    onClick = {
-                                        inputUrl = preset.second
-                                        viewModel.loadPlaylist(preset.second)
-                                        showCustomUrlInput = false
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (state.playlistUrl == preset.second) MaterialTheme.colorScheme.primary else Color(0xFF334155)
-                                    ),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.testTag("preset_${preset.first}")
-                                ) {
-                                    Text(preset.first, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = "Exit Full Screen",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
+        } else {
+            // Standard Dashboard Mode (Responsive Grid/Column)
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+            ) {
+                // Branded Header Row
+                HeaderBar(
+                    selectedChannel = selectedChannel,
+                    isValidating = isValidating,
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = { isFullscreen = !isFullscreen },
+                    onOpenAdmin = { showAdminPanel = !showAdminPanel }
+                )
 
-            // TV Split-Screen Layout or standard Mobile vertical stack
-            BoxWithConstraints(modifier = Modifier.weight(1f)) {
-                val isWide = maxWidth > 750.dp
+                // Responsive Layout splitter
+                if (isPortrait) {
+                    // Mobile Portrait Mode Structure
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        // Main active stream screen bounds
+                        selectedChannel?.let { channel ->
+                            VideoPlayerBox(
+                                channel = channel,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(240.dp)
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        } ?: Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .padding(12.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF0F172A)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "No Channel Selected. Touch below to watch.",
+                                color = Color.Gray,
+                                fontSize = 13.sp
+                            )
+                        }
 
-                if (isWide) {
-                    // Wide/TV Optimized Landscape Split View
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        // Left Pane: Video Player + Media Controls
+                        // Sponsor scrolling ticker
+                        SponsorMarquee(
+                            sponsors = activeSponsors,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+
+                        // Categories selectors row
+                        CategoryRow(
+                            selectedCategory = selectedCategory,
+                            onCategorySelected = { viewModel.setCategory(it) },
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+
+                        // Collapsible admin panel sheet drawer
+                        if (showAdminPanel) {
+                            AdminPanel(
+                                sponsors = activeSponsors,
+                                onSaveSponsor = { viewModel.saveSponsor(it) },
+                                onDeleteSponsor = { viewModel.deleteSponsor(it) },
+                                onClose = { showAdminPanel = false },
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            )
+                        }
+
+                        // Channels Listings lazy stacked column
+                        ChannelsLayout(
+                            bangladeshList = bangladeshChannels,
+                            indiaList = indiaChannels,
+                            globalList = globalChannels,
+                            selectedChannel = selectedChannel,
+                            onChannelSelected = { viewModel.selectChannel(it) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                } else {
+                    // Tablet Landscape Side-by-Side Structure
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        // Left Pane: Stream Player + Sponsor Ticker + Admin Control
                         Column(
                             modifier = Modifier
                                 .weight(1.2f)
                                 .fillMaxHeight()
-                                .padding(16.dp)
+                                .padding(12.dp)
                         ) {
-                            // Video player takes core focus
-                            VideoPlayerBox(
-                                state = state,
-                                isFullscreen = false,
-                                onFullscreenToggle = { viewModel.toggleFullscreen() },
+                            selectedChannel?.let { channel ->
+                                VideoPlayerBox(
+                                    channel = channel,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                )
+                            } ?: Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(16 / 9f)
+                                    .weight(1f)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(12.dp))
-                            )
+                                    .background(Color(0xFF0F172A)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No Channel Selected.",
+                                    color = Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                            }
 
-                            SpacerHeight(12)
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                            // Continuous flow sponsors marquee
-                            SponsorMarquee(
-                                sponsors = activeSponsors,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            SponsorMarquee(sponsors = activeSponsors)
+
+                            if (showAdminPanel) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                AdminPanel(
+                                    sponsors = activeSponsors,
+                                    onSaveSponsor = { viewModel.saveSponsor(it) },
+                                    onDeleteSponsor = { viewModel.deleteSponsor(it) },
+                                    onClose = { showAdminPanel = false }
+                                )
+                            }
                         }
 
-                        // Right Pane: Filters + Interactive Channels List
+                        // Right Pane: Active Category and Channel Flow list
                         Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(Color(0xFF0F172A).copy(alpha = 0.5f))
-                                .border(
-                                    border = BorderStroke(1.dp, Color(0xFF1E293B)),
-                                    shape = RoundedCornerShape(topStart = 16.dp)
-                                )
-                                .padding(16.dp)
+                                .background(Color(0xFF0F172A))
+                                .padding(vertical = 12.dp)
                         ) {
                             CategoryRow(
-                                selected = state.selectedCategory,
-                                onSelect = { viewModel.selectCategory(it) }
+                                selectedCategory = selectedCategory,
+                                onCategorySelected = { viewModel.setCategory(it) }
                             )
 
-                            SpacerHeight(12)
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                            ChannelSectionList(
-                                channels = channels,
-                                currentSelected = state.selectedChannel,
-                                onSelectChannel = { viewModel.selectChannel(it) },
-                                isLoading = state.isLoadingChannels
+                            ChannelsLayout(
+                                bangladeshList = bangladeshChannels,
+                                indiaList = indiaChannels,
+                                globalList = globalChannels,
+                                selectedChannel = selectedChannel,
+                                onChannelSelected = { viewModel.selectChannel(it) },
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
                     }
-                } else {
-                    // Mobile Vertical Stack View
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Top segment: player
-                        VideoPlayerBox(
-                            state = state,
-                            isFullscreen = false,
-                            onFullscreenToggle = { viewModel.toggleFullscreen() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16 / 9f)
-                        )
-
-                        // Sponsors Marquee
-                        SponsorMarquee(
-                            sponsors = activeSponsors,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        )
-
-                        // Category pillows
-                        CategoryRow(
-                            selected = state.selectedCategory,
-                            onSelect = { viewModel.selectCategory(it) },
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
-
-                        SpacerHeight(8)
-
-                        // Channels scroll feed
-                        ChannelSectionList(
-                            channels = channels,
-                            currentSelected = state.selectedChannel,
-                            onSelectChannel = { viewModel.selectChannel(it) },
-                            isLoading = state.isLoadingChannels,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
                 }
             }
         }
-        }
+    }
+}
 
-        // TV Remote Hotkey overlay switch prompt
-        if (state.digitSwitchChannelName != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.widthIn(max = 300.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Switching to",
-                            fontSize = 12.sp,
-                            color = Color.LightGray,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "CHANNEL ${state.digitSwitchCode}",
-                            fontSize = 32.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                        Text(
-                            text = state.digitSwitchChannelName ?: "Searching target...",
-                            fontSize = 14.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                        SpacerHeight(12)
-                        CircularProgressIndicator(
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Secure Sponser Admin Overlay Panel
-        if (state.adminPasswordChallengeActive || state.isAdminLoggedIn) {
-            AdminPanelDialog(
-                state = state,
-                onDismiss = { viewModel.toggleAdminChallenge(false); viewModel.logoutAdmin() },
-                onPasswordSubmit = { viewModel.challengeAdminPassword(it) },
-                onLogout = { viewModel.logoutAdmin() },
-                onSaveSponsor = { viewModel.saveSponsor(it) },
-                onDeleteSponsor = { viewModel.deleteSponsor(it) },
-                onEditSponsorClick = { viewModel.setEditingSponsor(it) },
-                onAddAdmin = { viewModel.addAdmin(it) },
-                onRemoveAdmin = { viewModel.removeAdmin(it) }
+@Composable
+fun HeaderBar(
+    selectedChannel: Channel?,
+    isValidating: Boolean,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
+    onOpenAdmin: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0F172A))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Brand Title
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Live Icon logo",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
             )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "SLATE",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = "IPTV",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Light,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.sp
+            )
+
+            // Spinner to indicate silent automatic latency validations!
+            if (isValidating) {
+                Spacer(modifier = Modifier.width(12.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 1.5.dp
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "HEALING...",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
-        if (showLoginDialog) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.85f))
-                    .clickable(enabled = true, onClick = {}) // block pass-through click events
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (selectedChannel != null) {
+                // Instantly clickable fullscreen trigger
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E293B))
+                        .clickable { onToggleFullscreen() }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "ফুল স্ক্রিন (FullScreen)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+
+            // Quick Floating Config Settings trigger
+            IconButton(
+                onClick = onOpenAdmin,
+                modifier = Modifier.size(36.dp)
             ) {
-                LoginScreen(
-                    viewModel = viewModel,
-                    onDismiss = { showLoginDialog = false }
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Admin trigger settings",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -464,533 +348,133 @@ fun MainScreen(
 
 @Composable
 fun VideoPlayerBox(
-    state: IptvUiState,
-    isFullscreen: Boolean = false,
-    onFullscreenToggle: (() -> Unit)? = null,
+    channel: Channel,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier) {
-        if (state.selectedChannel != null) {
-            VideoPlayer(
-                channel = state.selectedChannel,
-                isFullscreen = isFullscreen,
-                isBackgroundPlayEnabled = state.isBackgroundPlayEnabled,
-                isInPipMode = state.isInPipMode,
-                onFullscreenToggle = onFullscreenToggle,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Elegant player placeholder
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.LiveTv,
-                        contentDescription = "Placeholder screen",
-                        tint = Color.DarkGray,
-                        modifier = Modifier.size(64.dp)
-                    )
-                    SpacerHeight(12)
-                    Text(
-                        text = "No Live Stream Selected",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.Gray
-                    )
-                    Text(
-                        text = "Pick an IPTV stream from the catalog below.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.DarkGray
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun BackgroundPlayIcon(tint: Color = Color.White, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.Canvas(modifier = modifier.size(16.dp)) {
-        val w = size.width
-        val h = size.height
-        val strokeW = 1.8.dp.toPx()
-        
-        // Large outline rectangle (representing the app/screen)
-        drawRect(
-            color = tint.copy(alpha = 0.5f),
-            topLeft = androidx.compose.ui.geometry.Offset(0f, 0f),
-            size = androidx.compose.ui.geometry.Size(w * 0.9f, h * 0.9f),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeW)
+    Column(modifier = modifier) {
+        VideoPlayer(
+            url = channel.url,
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
         )
-        
-        // Small filled rectangle in bottom-right (representing PiP window)
-        drawRect(
-            color = tint,
-            topLeft = androidx.compose.ui.geometry.Offset(w * 0.45f, h * 0.45f),
-            size = androidx.compose.ui.geometry.Size(w * 0.5f, h * 0.5f)
-        )
-    }
-}
-
-@Composable
-fun HeaderSection(
-    userEmail: String?,
-    selectedChannel: Channel?,
-    isBackgroundPlayEnabled: Boolean,
-    onToggleFullscreen: () -> Unit,
-    onToggleBackgroundPlay: () -> Unit,
-    onLoginClick: () -> Unit,
-    onLogoutClick: () -> Unit,
-    onAdminClick: () -> Unit,
-    onToggleCustomUrl: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var showMenu by remember { mutableStateOf(false) }
-    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isCompact = configuration.screenWidthDp < 640
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xFF0F172A)) // Premium Dark Slate base
-            .padding(horizontal = if (isCompact) 8.dp else 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Styled Branded Theme App Label
-        Icon(
-            imageVector = Icons.Default.DesktopMac,
-            contentDescription = "Live Logo",
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(if (isCompact) 24.dp else 28.dp)
-        )
-        SpacerWidth(if (isCompact) 4 else 8)
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "SLATE",
-                    fontSize = if (isCompact) 15.sp else 18.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "IPTV",
-                    fontSize = if (isCompact) 15.sp else 18.sp,
-                    fontWeight = FontWeight.Light,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(start = 2.dp)
-                )
-            }
-            if (!isCompact) {
-                Text(
-                    text = "Live Stream Hybrid TV Portal",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.Gray
-                )
-            }
-        }
-
-        if (selectedChannel != null) {
-            SpacerWidth(if (isCompact) 6 else 12)
-            var isFsFocused by remember { mutableStateOf(false) }
-            Button(
-                onClick = onToggleFullscreen,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isFsFocused) MaterialTheme.colorScheme.primary else Color(0xFF1E293B)
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isFsFocused) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = if (isCompact) androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp) else ButtonDefaults.ContentPadding,
-                modifier = Modifier
-                    .onFocusChanged { isFsFocused = it.isFocused }
-                    .focusable()
-                    .testTag("header_fullscreen_button")
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FullscreenIcon(tint = if (isFsFocused) Color.Black else Color.White)
-                    if (!isCompact) {
-                        SpacerWidth(6)
-                        Text(
-                            text = "ফুল স্ক্রিন (Full Screen)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isFsFocused) Color.Black else Color.White
-                        )
-                    }
-                }
-            }
-
-            SpacerWidth(if (isCompact) 4 else 8)
-            var isBgFocused by remember { mutableStateOf(false) }
-            Button(
-                onClick = onToggleBackgroundPlay,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isBgFocused) {
-                        MaterialTheme.colorScheme.primary 
-                    } else if (isBackgroundPlayEnabled) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                    } else {
-                        Color(0xFF1E293B)
-                    }
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isBgFocused) {
-                        Color.White 
-                    } else if (isBackgroundPlayEnabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                    }
-                ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = if (isCompact) androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp) else ButtonDefaults.ContentPadding,
-                modifier = Modifier
-                    .onFocusChanged { isBgFocused = it.isFocused }
-                    .focusable()
-                    .testTag("header_background_play_button")
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    BackgroundPlayIcon(
-                        tint = if (isBgFocused) {
-                            Color.Black 
-                        } else if (isBackgroundPlayEnabled) {
-                            MaterialTheme.colorScheme.primary 
-                        } else {
-                            Color.White
-                        }
-                    )
-                    if (!isCompact) {
-                        SpacerWidth(6)
-                        Text(
-                            text = if (isBackgroundPlayEnabled) "ব্যাকগ্রাউন্ড প্লে (চালু)" else "ব্যাকগ্রাউন্ড প্লে (বন্ধ)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isBgFocused) {
-                                Color.Black 
-                            } else if (isBackgroundPlayEnabled) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                Color.White
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
-
-        // Sync Playlist Trigger
-        IconButton(
-            onClick = onToggleCustomUrl,
-            modifier = Modifier.testTag("toggle_custom_playlist_button")
-        ) {
-            Icon(
-                imageVector = Icons.Default.Input,
-                contentDescription = "IPTV Input Link",
-                tint = Color.LightGray
-            )
-        }
-
-        SpacerWidth(4)
-
-        // Security code entry
-        IconButton(
-            onClick = onAdminClick,
-            modifier = Modifier.testTag("admin_portal_button")
-        ) {
-            Icon(
-                imageVector = Icons.Default.AdminPanelSettings,
-                contentDescription = "Admin Portal",
-                tint = Color.LightGray
-            )
-        }
-
-        SpacerWidth(4)
-
-        // Three-dot Options dropdown menu hosting login system
-        Box {
-            IconButton(
-                onClick = { showMenu = true },
-                modifier = Modifier.testTag("auth_three_dots_menu_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "More Options",
-                    tint = Color.White
-                )
-            }
-
-            androidx.compose.material3.DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false },
-                modifier = Modifier.background(Color(0xFF0F172A))
-            ) {
-                if (userEmail == null) {
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = "লগইন / রেজিস্টার (Sign In)",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        onClick = {
-                            showMenu = false
-                            onLoginClick()
-                        }
-                    )
-                } else {
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(
-                                    text = "একাউন্টঃ",
-                                    fontSize = 10.sp,
-                                    color = Color.Gray
-                                )
-                                Text(
-                                    text = userEmail,
-                                    fontSize = 12.sp,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (userEmail.trim().lowercase() == "foridahmed6682@gmail.com") {
-                                    Text(
-                                        text = "👑 প্রধান এডমিন (Owner)",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
-                            }
-                        },
-                        onClick = {},
-                        enabled = false
-                    )
-                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF1E293B))
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = "বাহির হোন (Sign Out)",
-                                fontSize = 13.sp,
-                                color = Color(0xFFFDA4AF),
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        onClick = {
-                            showMenu = false
-                            onLogoutClick()
-                        }
-                    )
-                }
-            }
-        }
     }
 }
 
 @Composable
 fun CategoryRow(
-    selected: String,
-    onSelect: (String) -> Unit,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val categories = listOf("All", "FIFA", "News", "Sports", "Entertainment", "Movies", "Music")
+    val categories = listOf(
+        "All" to "All (সব চ্যানেল)",
+        "FIFA" to "FIFA (ফিফা)",
+        "News" to "News (খবর)",
+        "Entertainment" to "Entertainment (বিনোদন)"
+    )
 
     LazyRow(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(categories) { category ->
-            val bilingualTitle = when (category) {
-                "All" -> "All (সব চ্যানেল)"
-                "FIFA" -> "FIFA (ফিফা)"
-                "News" -> "News (খবর)"
-                "Sports" -> "Sports (খেলা)"
-                "Entertainment" -> "Entertainment (বিনোদন)"
-                "Movies" -> "Movies (সিনেমা)"
-                "Music" -> "Music (গান)"
-                else -> category
+        items(categories) { (key, title) ->
+            val isActive = selectedCategory == key
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (isActive) MaterialTheme.colorScheme.primary else Color(0xFF1E293B))
+                    .clickable { onCategorySelected(key) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("category_$key")
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) Color.Black else Color.White
+                )
             }
-            CategoryPill(
-                title = bilingualTitle,
-                isSelected = category == selected,
-                onClick = { onSelect(category) }
-            )
         }
     }
 }
 
 @Composable
-fun CategoryPill(
-    title: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
+fun ChannelsLayout(
+    bangladeshList: List<Channel>,
+    indiaList: List<Channel>,
+    globalList: List<Channel>,
+    selectedChannel: Channel?,
+    onChannelSelected: (Channel) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-
-    Box(
+    LazyColumn(
         modifier = modifier
-            .clip(CircleShape) // Circular pill-shaped design
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.primary
-                else if (isFocused) Color(0xFF334155)
-                else Color(0xFF1E293B)
-            )
-            .border(
-                width = 1.dp,
-                color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                shape = CircleShape
-            )
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .testTag("category_pill_$title"),
-        contentAlignment = Alignment.Center
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Section 1: Bangladesh
+        if (bangladeshList.isNotEmpty()) {
+            item {
+                SectionHeader(title = "🇧🇩 Bangladesh Live", count = bangladeshList.size)
+            }
+            items(bangladeshList, key = { it.url }) { channel ->
+                ChannelItemRow(
+                    channel = channel,
+                    isSelected = selectedChannel?.url == channel.url,
+                    onSelect = { onChannelSelected(channel) }
+                )
+            }
+        }
+
+        // Section 2: India
+        if (indiaList.isNotEmpty()) {
+            item {
+                SectionHeader(title = "🇮🇳 India Live", count = indiaList.size)
+            }
+            items(indiaList, key = { it.url }) { channel ->
+                ChannelItemRow(
+                    channel = channel,
+                    isSelected = selectedChannel?.url == channel.url,
+                    onSelect = { onChannelSelected(channel) }
+                )
+            }
+        }
+
+        // Section 3: Global
+        if (globalList.isNotEmpty()) {
+            item {
+                SectionHeader(title = "🌐 Global Live", count = globalList.size)
+            }
+            items(globalList, key = { it.url }) { channel ->
+                ChannelItemRow(
+                    channel = channel,
+                    isSelected = selectedChannel?.url == channel.url,
+                    onSelect = { onChannelSelected(channel) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SectionHeader(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = title,
-            fontSize = 13.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            color = if (isSelected) Color(0xFF0F172A) else Color.White
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
         )
-    }
-}
-
-@Composable
-fun ChannelSectionList(
-    channels: List<Channel>,
-    currentSelected: Channel?,
-    onSelectChannel: (Channel) -> Unit,
-    isLoading: Boolean,
-    modifier: Modifier = Modifier
-) {
-    if (isLoading) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                SpacerHeight(12)
-                Text("Caching Live Channels feed dynamically...", color = Color.Gray, fontSize = 12.sp)
-            }
-        }
-        return
-    }
-
-    if (channels.isEmpty()) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "No channels in this category",
-                    color = Color.LightGray,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Try syncing playlists using the input at the top right.",
-                    fontSize = 11.sp,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
-        return
-    }
-
-    // Sort into Bangladesh, India and Global groupings for clean headers
-    val bangladeshChannels = remember(channels) { channels.filter { it.country == "Bangladesh" } }
-    val indiaChannels = remember(channels) { channels.filter { it.country == "India" } }
-    val globalChannels = remember(channels) { channels.filter { it.country != "Bangladesh" && it.country != "India" } }
-
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (bangladeshChannels.isNotEmpty()) {
-            item {
-                CountrySectionHeader(name = "🇧🇩 Bangladesh Live", count = bangladeshChannels.size)
-            }
-            items(bangladeshChannels) { item ->
-                ChannelRowItem(
-                    channel = item,
-                    isSelected = currentSelected?.url == item.url,
-                    onClick = { onSelectChannel(item) }
-                )
-            }
-        }
-
-        if (indiaChannels.isNotEmpty()) {
-            item {
-                CountrySectionHeader(name = "🇮🇳 India Live", count = indiaChannels.size)
-            }
-            items(indiaChannels) { item ->
-                ChannelRowItem(
-                    channel = item,
-                    isSelected = currentSelected?.url == item.url,
-                    onClick = { onSelectChannel(item) }
-                )
-            }
-        }
-
-        if (globalChannels.isNotEmpty()) {
-            item {
-                CountrySectionHeader(name = "🌐 Global Live Broadcasts", count = globalChannels.size)
-            }
-            items(globalChannels) { item ->
-                ChannelRowItem(
-                    channel = item,
-                    isSelected = currentSelected?.url == item.url,
-                    onClick = { onSelectChannel(item) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CountrySectionHeader(
-    name: String,
-    count: Int,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = name,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.primary,
-            letterSpacing = 0.5.sp
-        )
-        SpacerWidth(8)
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
@@ -1008,210 +492,107 @@ fun CountrySectionHeader(
 }
 
 @Composable
-fun ChannelRowItem(
+fun ChannelItemRow(
     channel: Channel,
     isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onSelect: () -> Unit
 ) {
-    val context = LocalContext.current
-    var isFocused by remember { mutableStateOf(false) }
+    val indicatorColor = if (isSelected) MaterialTheme.colorScheme.primary else Color(0xFF1E293B)
+    
+    // Latency visualizer label
+    val latencyLabel = when {
+        channel.responseTimeMs < 250L -> "⚡ Super Fast (${channel.responseTimeMs}ms)"
+        channel.responseTimeMs < 500L -> "⚡ Fast (${channel.responseTimeMs}ms)"
+        channel.responseTimeMs < 1000L -> "⚡ Good (${channel.responseTimeMs}ms)"
+        else -> "📶 Med (${channel.responseTimeMs}ms)"
+    }
+    
+    val latencyColor = when {
+        channel.responseTimeMs < 250L -> Color(0xFF22C55E) // Green
+        channel.responseTimeMs < 500L -> Color(0xFF38BDF8) // Cyan
+        channel.responseTimeMs < 1000L -> Color(0xFFEAB308) // Yellow
+        else -> Color.Gray
+    }
 
-    Card(
-        modifier = modifier
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable { onClick() }
-            .testTag("channel_card_${channel.channelNumber}"),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Color(0xFF1E293B)
-            else if (isFocused) Color(0xFF334155).copy(alpha = 0.6f)
-            else Color(0xFF1E293B).copy(alpha = 0.45f)
-        ),
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (isSelected) MaterialTheme.colorScheme.primary
-            else if (isFocused) Color(0xFF38BDF8).copy(alpha = 0.5f)
-            else Color(0xFF334155).copy(alpha = 0.2f)
-        ),
-        shape = RoundedCornerShape(10.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) Color(0xFF1E293B) else Color(0xFF0F172A))
+            .border(1.dp, indicatorColor, RoundedCornerShape(8.dp))
+            .clickable { onSelect() }
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Channel Logo Frame with Failover placeholder
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
         ) {
-            // Channel Number Box
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        else Color(0xFF0F172A)
-                    )
-                    .width(42.dp)
-                    .height(34.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = channel.channelNumber.toString(),
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray
-                )
-            }
-
-            SpacerWidth(12)
-
-            // Logo
             AsyncImage(
-                model = channel.logoUrl ?: "https://images.unsplash.com/photo-1598257006458-087169a1f08d?auto=format&fit=crop&w=100&q=80",
-                contentDescription = "Channel logo",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF0F172A))
-                    .border(0.5.dp, Color(0xFF475569), RoundedCornerShape(6.dp))
+                model = channel.logo,
+                contentDescription = "${channel.name} Logo",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
             )
+        }
 
-            SpacerWidth(12)
+        Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = channel.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Row(
-                    modifier = Modifier.padding(top = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Category pill
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF334155).copy(alpha = 0.5f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = channel.category,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.LightGray
-                        )
-                    }
-
-                    SpacerWidth(6)
-
-                    // Country Tag
-                    Text(
-                        text = channel.country,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.Gray
-                    )
-                }
-            }
-
-            // Resolution selection system pill (on right side of channel name)
-            var showOptions by remember { mutableStateOf(false) }
-            var currentResSelection by remember { mutableStateOf(channel.resolution) }
-
-            Box(
-                modifier = Modifier.padding(horizontal = 6.dp)
+        // Info Column
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = channel.name,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else Color(0xFF1E293B)
-                        )
-                        .border(
-                            width = 0.5.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                            else Color(0xFF334155),
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .clickable { showOptions = true }
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = currentResSelection,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray
-                    )
-                    SpacerWidth(2)
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Quality Select",
-                        tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-                        modifier = Modifier.size(10.dp)
-                    )
-                }
-
-                androidx.compose.material3.DropdownMenu(
-                    expanded = showOptions,
-                    onDismissRequest = { showOptions = false },
-                    modifier = Modifier.background(Color(0xFF0F172A))
-                ) {
-                    Text(
-                        text = "Receiver Quality",
-                        color = Color.Gray,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF1E293B))
-                    listOf("1080p FHD", "720p HD", "480p SD").forEach { resOption ->
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = resOption,
-                                    fontSize = 12.sp,
-                                    color = if (currentResSelection.lowercase().contains(resOption.substringBefore(" ").lowercase())) MaterialTheme.colorScheme.primary else Color.White
-                                )
-                            },
-                            onClick = {
-                                currentResSelection = resOption.substringBefore(" ")
-                                showOptions = false
-                                Toast.makeText(context, "${channel.name} set to $resOption via IPTV Resolution System", Toast.LENGTH_SHORT).show()
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Real-Time streaming visualizer bar
-            if (isSelected) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.Bottom,
-                    modifier = Modifier.height(14.dp)
-                ) {
-                    Box(modifier = Modifier.size(2.dp, 10.dp).background(MaterialTheme.colorScheme.primary))
-                    Box(modifier = Modifier.size(2.dp, 14.dp).background(MaterialTheme.colorScheme.primary))
-                    Box(modifier = Modifier.size(2.dp, 6.dp).background(MaterialTheme.colorScheme.primary))
-                }
+                Text(
+                    text = channel.category,
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+                Text(
+                    text = "•",
+                    fontSize = 11.sp,
+                    color = Color.DarkGray
+                )
+                // Live Latency Metric Badge
+                Text(
+                    text = latencyLabel,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = latencyColor
+                )
             }
         }
+
+        // Small indicator pill
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(30.dp))
+                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color(0xFF1E293B)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "▶",
+                fontSize = 10.sp,
+                color = if (isSelected) Color.Black else Color.White,
+                modifier = Modifier.offset(x = 1.dp)
+            )
+        }
     }
-}
-
-@Composable
-fun SpacerHeight(dp: Int) {
-    androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(dp.dp))
-}
-
-@Composable
-fun SpacerWidth(dp: Int) {
-    androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(dp.dp))
 }

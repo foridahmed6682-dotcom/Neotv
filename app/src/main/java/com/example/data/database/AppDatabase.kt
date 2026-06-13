@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import com.example.data.model.Channel
 import com.example.data.model.Sponsor
 
-@Database(entities = [Channel::class, Sponsor::class], version = 3, exportSchema = false)
+@Database(entities = [Channel::class, Sponsor::class], version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun channelDao(): ChannelDao
     abstract fun sponsorDao(): SponsorDao
@@ -21,7 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "slate_iptv_database"
+                    "slate_iptv_db"
                 )
                 .fallbackToDestructiveMigration()
                 .build()

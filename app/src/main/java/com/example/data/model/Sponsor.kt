@@ -5,10 +5,8 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "sponsors")
 data class Sponsor(
-    @PrimaryKey val id: String = "",
-    val imageUrl: String = "",
-    val text: String = "",
-    val linkUrl: String = "",
-    val isActive: Boolean = true,
-    val updatedAt: Long = 0L
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val description: String,
+    val isActive: Boolean = true
 )

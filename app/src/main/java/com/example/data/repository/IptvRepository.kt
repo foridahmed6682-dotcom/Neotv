@@ -4,244 +4,32 @@ import android.content.Context
 import android.util.Log
 import com.example.data.database.ChannelDao
 import com.example.data.database.SponsorDao
-import com.example.data.database.AppDatabase
 import com.example.data.model.Channel
 import com.example.data.model.Sponsor
-import com.example.data.parser.M3uParser
-import com.google.firebase.FirebaseApp
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 class IptvRepository(
-    private val context: Context,
     private val channelDao: ChannelDao,
     private val sponsorDao: SponsorDao
 ) {
-    val allChannelsFlow: Flow<List<Channel>> = channelDao.getAllChannelsFlow()
-    val activeSponsorsFlow: Flow<List<Sponsor>> = sponsorDao.getActiveSponsorsFlow()
-    val allSponsorsFlow: Flow<List<Sponsor>> = sponsorDao.getAllSponsorsFlow()
+    val allActiveChannels: Flow<List<Channel>> = channelDao.getAllChannelsFlow()
+    val allActiveSponsors: Flow<List<Sponsor>> = sponsorDao.getAllActiveSponsors()
 
-    private val firestore: FirebaseFirestore? by lazy {
-        try {
-            if (FirebaseApp.getApps(context).isEmpty()) {
-                FirebaseApp.initializeApp(context)
-            }
-            FirebaseFirestore.getInstance()
-        } catch (e: Exception) {
-            Log.e("IptvRepository", "Firebase initialization failed: ${e.message}")
-            null
-        }
+    suspend fun getAllRawChannels(): List<Channel> = withContext(Dispatchers.IO) {
+        channelDao.getAllRawChannels()
     }
 
-    suspend fun insertSponsorLocal(sponsor: Sponsor) = withContext(Dispatchers.IO) {
-        sponsorDao.insertSponsor(sponsor)
+    fun getChannelsByCategory(category: String): Flow<List<Channel>> {
+        return channelDao.getChannelsByCategoryFlow(category)
     }
 
-    suspend fun deleteSponsorLocal(id: String) = withContext(Dispatchers.IO) {
-        sponsorDao.deleteSponsorById(id)
-    }
-
-    /**
-     * Set up default offline cache values for sponsors if database is empty.
-     */
-    suspend fun seedDefaultSponsorsIfEmpty() = withContext(Dispatchers.IO) {
-        val currentSponsors = mutableListOf<Sponsor>()
-        // Let's check from custom Flow, or we can query DB. Here, we can seed default premium sponsors.
-        val defaultSponsors = listOf(
-            Sponsor(
-                id = "sponsor_default_1",
-                imageUrl = "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=400&q=80",
-                text = "Premium Bangladesh Sports IPTV Portal. Experience live football, cricket HD streaming with zero latency!",
-                linkUrl = "https://iptv-org.github.io/",
-                isActive = true,
-                updatedAt = System.currentTimeMillis()
-            ),
-            Sponsor(
-                id = "sponsor_default_2",
-                imageUrl = "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=400&q=80",
-                text = "Watch Independent, Somoy, BTV, and local Bangladesh News channels anywhere, optimized for remote and mobile viewing.",
-                linkUrl = "https://github.com/iptv-org/iptv",
-                isActive = true,
-                updatedAt = System.currentTimeMillis() - 1000
-            )
-        )
-        sponsorDao.insertSponsors(defaultSponsors)
-    }
-
-    /**
-     * Pull sponsors from Firebase Firestore in a thread-safe helper, saving them to Room local cache.
-     */
-    suspend fun fetchSponsorsFromFirestore(): Result<List<Sponsor>> = withContext(Dispatchers.IO) {
-        val db = firestore ?: return@withContext Result.failure(Exception("Firestore is not initialized or missing google-services.json"))
-
-        suspendCancellableCoroutine { continuation ->
-            db.collection("sponsors")
-                .get()
-                .addOnSuccessListener { querySnapshot ->
-                    val sponsors = mutableListOf<Sponsor>()
-                    for (doc in querySnapshot) {
-                        try {
-                            val id = doc.id
-                            val imageUrl = doc.getString("imageUrl") ?: ""
-                            val text = doc.getString("text") ?: ""
-                            val linkUrl = doc.getString("linkUrl") ?: ""
-                            val isActive = doc.getBoolean("isActive") ?: true
-                            val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
-
-                            sponsors.add(
-                                Sponsor(
-                                    id = id,
-                                    imageUrl = imageUrl,
-                                    text = text,
-                                    linkUrl = linkUrl,
-                                    isActive = isActive,
-                                    updatedAt = updatedAt
-                                )
-                            )
-                        } catch (e: Exception) {
-                            Log.e("IptvRepository", "Error parsing sponsor doc: ${doc.id}", e)
-                        }
-                    }
-                    continuation.resume(Result.success(sponsors))
-                }
-                .addOnFailureListener { exception ->
-                    Log.e("IptvRepository", "Firestore fetch sponsors failed", exception)
-                    continuation.resume(Result.failure(exception))
-                }
-        }
-    }
-
-    /**
-     * Synergized sync: tries to fetch sponsors from Cloud, saving them locally, otherwise falls back to local cache.
-     */
-    suspend fun syncSponsors() {
-        fetchSponsorsFromFirestore().onSuccess { cloudSponsors ->
-            if (cloudSponsors.isNotEmpty()) {
-                withContext(Dispatchers.IO) {
-                    sponsorDao.deleteAllSponsors()
-                    sponsorDao.insertSponsors(cloudSponsors)
-                }
-            }
-        }.onFailure {
-            Log.w("IptvRepository", "Could not fetch sponsors from cloud, using local cached sponsors.")
-            // Ensure we at least have our premium default sponsors seeded if local db is empty
-            seedDefaultSponsorsIfEmpty()
-        }
-    }
-
-    /**
-     * Load IPTV playlist from custom URL or presets, parsing items and caching into local DB.
-     */
-    suspend fun loadPlaylist(url: String, forcedCountry: String? = null): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            Log.d("IptvRepository", "Loading playlist: $url")
-            val parsedChannels = M3uParser.parseFromUrl(url, forcedCountry)
-            if (parsedChannels.isNotEmpty()) {
-                // Keep existing channels if the user wants, or replace.
-                // In modern hybrid design, we replace the channels so we get the fresh playlist!
-                channelDao.deleteAllChannels()
-                channelDao.insertChannels(parsedChannels)
-                Log.d("IptvRepository", "Inserted ${parsedChannels.size} channels into Room cache.")
-                Result.success(parsedChannels.size)
-            } else {
-                Result.failure(Exception("M3U Playlist parsed 0 channels. Please verify URL source layout."))
-            }
-        } catch (e: Exception) {
-            Log.e("IptvRepository", "Error loading playlist", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Admin Firestore additions, updates & deletions. Employs best of both worlds by writing to Firestore,
-     * and always updating local cache as well so the changes reflect immediately.
-     */
-    suspend fun addSponsor(sponsor: Sponsor): Result<Unit> = withContext(Dispatchers.IO) {
-        // Local Room persistence is absolute first priority
-        sponsorDao.insertSponsor(sponsor)
-
-        val db = firestore ?: return@withContext Result.success(Unit) // Firestore failure is handled gracefully
-
-        suspendCancellableCoroutine { continuation ->
-            val data = hashMapOf(
-                "imageUrl" to sponsor.imageUrl,
-                "text" to sponsor.text,
-                "linkUrl" to sponsor.linkUrl,
-                "isActive" to sponsor.isActive,
-                "updatedAt" to sponsor.updatedAt
-            )
-            db.collection("sponsors").document(sponsor.id)
-                .set(data)
-                .addOnSuccessListener {
-                    continuation.resume(Result.success(Unit))
-                }
-                .addOnFailureListener { exception ->
-                    Log.e("IptvRepository", "Firestore write sponsor failed", exception)
-                    continuation.resume(Result.failure(exception))
-                }
-        }
-    }
-
-    suspend fun deleteSponsor(id: String): Result<Unit> = withContext(Dispatchers.IO) {
-        sponsorDao.deleteSponsorById(id)
-
-        val db = firestore ?: return@withContext Result.success(Unit)
-
-        suspendCancellableCoroutine { continuation ->
-            db.collection("sponsors").document(id)
-                .delete()
-                .addOnSuccessListener {
-                    continuation.resume(Result.success(Unit))
-                }
-                .addOnFailureListener { exception ->
-                    Log.e("IptvRepository", "Firestore deletion failed", exception)
-                    continuation.resume(Result.failure(exception))
-                }
-        }
-    }
-
-    // --- Admin Management ---
-
-    suspend fun fetchAdminsFromFirestore(): Result<List<String>> = withContext(Dispatchers.IO) {
-        val db = firestore ?: return@withContext Result.failure(Exception("Firestore not initialized"))
-
-        suspendCancellableCoroutine { continuation ->
-            db.collection("admins")
-                .get()
-                .addOnSuccessListener { querySnapshot ->
-                    val admins = querySnapshot.documents.mapNotNull { it.id }
-                    continuation.resume(Result.success(admins))
-                }
-                .addOnFailureListener {
-                    continuation.resume(Result.failure(it))
-                }
-        }
-    }
-
-    suspend fun addAdminToFirestore(email: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val db = firestore ?: return@withContext Result.failure(Exception("Firestore not initialized"))
-
-        suspendCancellableCoroutine { continuation ->
-            db.collection("admins").document(email)
-                .set(mapOf("email" to email))
-                .addOnSuccessListener { continuation.resume(Result.success(Unit)) }
-                .addOnFailureListener { continuation.resume(Result.failure(it)) }
-        }
-    }
-
-    suspend fun removeAdminFromFirestore(email: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val db = firestore ?: return@withContext Result.failure(Exception("Firestore not initialized"))
-
-        suspendCancellableCoroutine { continuation ->
-            db.collection("admins").document(email)
-                .delete()
-                .addOnSuccessListener { continuation.resume(Result.success(Unit)) }
-                .addOnFailureListener { continuation.resume(Result.failure(it)) }
-        }
+    suspend fun insertChannels(channels: List<Channel>) = withContext(Dispatchers.IO) {
+        channelDao.insertChannels(channels)
     }
 
     suspend fun updateChannelStatus(url: String, isActive: Boolean) = withContext(Dispatchers.IO) {
@@ -252,27 +40,203 @@ class IptvRepository(
         channelDao.updateChannelValidation(url, isActive, responseTimeMs)
     }
 
-    suspend fun verifyChannelLink(url: String): Boolean = withContext(Dispatchers.IO) {
-        verifyChannelLinkWithLatency(url).first
+    suspend fun insertSponsor(sponsor: Sponsor) = withContext(Dispatchers.IO) {
+        sponsorDao.insertSponsor(sponsor)
     }
 
+    suspend fun deleteSponsor(sponsor: Sponsor) = withContext(Dispatchers.IO) {
+        sponsorDao.deleteSponsor(sponsor)
+    }
+
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        channelDao.deleteAllChannels()
+        sponsorDao.deleteAllSponsors()
+    }
+
+    /**
+     * Seeds default IPTV channels in Bangladesh, India and International categories
+     * when the application state is empty on startup.
+     */
+    suspend fun seedDefaultDataIfEmpty() = withContext(Dispatchers.IO) {
+        val initialSponsors = listOf(
+            Sponsor(name = "SPONSOR 1", description = "SPONSOR: Premium Bangladesh Live TV Stream. Experience 4K clarity with zero buffering.", isActive = true),
+            Sponsor(name = "SPONSOR 2", description = "বিজ্ঞাপন: আপনার ব্র্যান্ডকে লক্ষ লক্ষ দর্শকের মোবাইলে ছড়িয়ে দিন আজই! যোগাযোগ: s-iptv@portal.net", isActive = true)
+        )
+        initialSponsors.forEach { sponsorDao.insertSponsor(it) }
+
+        val defaultChannels = listOf(
+            // Bangladesh (দেশী খবর ও বিনোদন)
+            Channel(
+                url = "https://live-free.jamuna.tv/hls/jamunahlshd.m3u8",
+                name = "Jamuna TV HD (যমুনা টিভি)",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEj79D40h1Vst0nFscIWeP-oZ5R4o6DRE_pQ2fQnNox6V_c92OPhY41WvO3K3mBof3P_vIs6e3D4-v_b6_Z_vX8S/s1600/jamuna_tv.png",
+                category = "News (খবর)",
+                country = "Bangladesh",
+                resolution = "1080p",
+                responseTimeMs = 120L // Initial guess
+            ),
+            Channel(
+                url = "https://somoytv-ott.somoynews.com/hls/somoytv.m3u8",
+                name = "Somoy News (সময় টিভি)",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgoq5N9V-Z269s5Wn8_bM62LqIuV_m5vD6o8r8o4z/s1600/somoy_news.png",
+                category = "News (খবর)",
+                country = "Bangladesh",
+                resolution = "1080p",
+                responseTimeMs = 150L
+            ),
+            Channel(
+                url = "http://103.119.100.22:1935/ch24/ch24.stream/playlist.m3u8",
+                name = "Channel 24 (চ্যানেল ২৪)",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjoQ2_V9M9_y9N5_W_9O9_2_S_N_O_z/s1600/channel24.png",
+                category = "Entertainment (বিনোদন)",
+                country = "Bangladesh",
+                resolution = "720p",
+                responseTimeMs = 180L
+            ),
+            Channel(
+                url = "https://btvlive.btv.gov.bd/hls/live.m3u8",
+                name = "BTV World (বিটিভি ওয়ার্ল্ড)",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiPq_69D_v9N6h1B9S6r75D6_2O_Z_q/s1600/btv_world.png",
+                category = "News (খবর)",
+                country = "Bangladesh",
+                resolution = "720p",
+                responseTimeMs = 210L
+            ),
+            Channel(
+                url = "http://103.119.100.22:1935/sangsad/sangsad.stream/playlist.m3u8",
+                name = "Sangsad TV (সংসদ টিভি)",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiS_h6r88_V_q95Z_Z_G_V_6_Y/s1600/sangsad_tv.png",
+                category = "News (খবর)",
+                country = "Bangladesh",
+                resolution = "720p",
+                responseTimeMs = 240L
+            ),
+            Channel(
+                url = "https://itv-live.singularitybd.com/itv/live/playlist.m3u8",
+                name = "Independent TV (ইনডিপেনডেন্ট)",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgv4_969_F_m65O2s_Y_l_W2O_q/s1600/independent_tv.png",
+                category = "News (খবর)",
+                country = "Bangladesh",
+                resolution = "1080p",
+                responseTimeMs = 200L
+            ),
+
+            // India (ভারতীয় মিডিয়া)
+            Channel(
+                url = "https://zeenews.akamaized.net/hls/live/2012117/zeenews/index.m3u8",
+                name = "Zee News India",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjPq5_V_G_269S9L_53vGz-V-782q_4v_z/s1600/zee_news.png",
+                category = "News (খবর)",
+                country = "India",
+                resolution = "720p",
+                responseTimeMs = 400L
+            ),
+            Channel(
+                url = "https://aajtak.akamaized.net/hls/live/2014138/asb/aajtak/master.m3u8",
+                name = "Aaj Tak Live",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEg_N86X_U_969t2n97D_C_s_Z/s1600/aaj_tak.png",
+                category = "News (খবর)",
+                country = "India",
+                resolution = "1080p",
+                responseTimeMs = 450L
+            ),
+            Channel(
+                url = "https://indiatoday.akamaized.net/hls/live/2014521/indiatoday/master.m3u8",
+                name = "India Today Live",
+                logo = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiPq5_G_E_z_X5P8G_h1_W_H_z/s1600/india_today.png",
+                category = "News (খবর)",
+                country = "India",
+                resolution = "1080p",
+                responseTimeMs = 480L
+            ),
+
+            // FIFA & Sports (ফিফা এবং খেলাধুলা)
+            Channel(
+                url = "https://vcdn.solasport.tv/hls/eurosport.m3u8",
+                name = "Eurosport HD (Sola Live)",
+                logo = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Eurosport_Logo.svg/1200px-Eurosport_Logo.svg.png",
+                category = "FIFA (ফিফা)",
+                country = "Global",
+                resolution = "1080p",
+                responseTimeMs = 310L
+            ),
+            Channel(
+                url = "https://solasport.tv/hls/bein.m3u8",
+                name = "beIN Sports Global Link",
+                logo = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/BeIN_Sports_logo.svg/1200px-BeIN_Sports_logo.svg.png",
+                category = "FIFA (ফিফা)",
+                country = "Global",
+                resolution = "1080p",
+                responseTimeMs = 320L
+            ),
+            Channel(
+                url = "https://vcdn.solasport.tv/hls/sports.m3u8",
+                name = "Sola Sports Premium",
+                logo = "https://solasport.tv/assets/logo.png",
+                category = "FIFA (ফিফা)",
+                country = "Global",
+                resolution = "1085p",
+                responseTimeMs = 350L
+            ),
+
+            // Global/World channels (বৈশ্বিক চ্যানেলসমূহ)
+            Channel(
+                url = "https://live-hls-web-aje.getaj.net/AJE/01.m3u8",
+                name = "Al Jazeera English News",
+                logo = "https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Al_Jazeera_English_logo.svg/1200px-Al_Jazeera_English_logo.svg.png",
+                category = "News (খবর)",
+                country = "Global",
+                resolution = "1080p",
+                responseTimeMs = 500L
+            ),
+            Channel(
+                url = "https://static.france24.com/live/F24_EN_LO_HLS/live_tv.m3u8",
+                name = "France 24 Live EN",
+                logo = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/France_24_logo.svg/1200px-France_24_logo.svg.png",
+                category = "News (খবর)",
+                country = "Global",
+                resolution = "720p",
+                responseTimeMs = 550L
+            ),
+            Channel(
+                url = "https://dwstream72-lh.akamaihd.net/i/dwstream72_live@123556/master.m3u8",
+                name = "DW News English Live",
+                logo = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Deutsche_Welle_logo_2012.svg/1200px-Deutsche_Welle_logo_2012.svg.png",
+                category = "News (খবর)",
+                country = "Global",
+                resolution = "720p",
+                responseTimeMs = 600L
+            )
+        )
+
+        channelDao.insertChannels(defaultChannels)
+        Log.d("IptvRepository", "Database seeded successfully with ${defaultChannels.size} preset channels.")
+    }
+
+    /**
+     * Checks if a stream URL is active and measures its connection latency (responseTimeMs).
+     */
     suspend fun verifyChannelLinkWithLatency(url: String): Pair<Boolean, Long> = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         try {
-            val client = okhttp3.OkHttpClient.Builder()
-                .connectTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .readTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            val client = OkHttpClient.Builder()
+                .connectTimeout(1500, TimeUnit.MILLISECONDS)
+                .readTimeout(1500, TimeUnit.MILLISECONDS)
                 .build()
-            val request = okhttp3.Request.Builder()
+
+            val request = Request.Builder()
                 .url(url)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .head()
                 .build()
+
             client.newCall(request).execute().use { response ->
                 val durationMs = System.currentTimeMillis() - startTime
                 val isSuccess = response.isSuccessful || response.code in 200..399
                 Pair(isSuccess, if (isSuccess) durationMs else 99999L)
             }
-        } catch (e: java.lang.Exception) {
+        } catch (e: Exception) {
+            Log.e("IptvRepository", "Failed validation for $url: ${e.message}")
             Pair(false, 99999L)
         }
     }

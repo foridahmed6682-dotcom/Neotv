@@ -1,6 +1,8 @@
 {
-  "name": "NeoTV Pro",
-  "description": "Premium NeoTV Pro Android TV & Mobile hybrid portal powered by Firebase backend. Featuring global IPTV integration, corporate sponsor marquee, resolution control, and cloud-synced admin authorization.",
+  "name": "Slate IPTV",
+  "description": "Live Stream Hybrid IPTV Portal with automatic category loading, dual-mode connectivity checking, fast-loading priority sorting, and ad-management capabilities.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

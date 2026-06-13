@@ -7,8 +7,8 @@ import androidx.room.PrimaryKey
 data class Channel(
     @PrimaryKey val url: String,
     val name: String,
-    val logoUrl: String? = null,
-    val category: String = "All",
+    val logo: String,
+    val category: String,
     val country: String = "Global",
     val channelNumber: Int = 0,
     val isActive: Boolean = true,
