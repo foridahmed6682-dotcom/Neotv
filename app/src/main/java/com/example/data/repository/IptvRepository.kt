@@ -248,7 +248,16 @@ class IptvRepository(
         channelDao.updateChannelStatus(url, isActive)
     }
 
+    suspend fun updateChannelValidation(url: String, isActive: Boolean, responseTimeMs: Long) = withContext(Dispatchers.IO) {
+        channelDao.updateChannelValidation(url, isActive, responseTimeMs)
+    }
+
     suspend fun verifyChannelLink(url: String): Boolean = withContext(Dispatchers.IO) {
+        verifyChannelLinkWithLatency(url).first
+    }
+
+    suspend fun verifyChannelLinkWithLatency(url: String): Pair<Boolean, Long> = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
         try {
             val client = okhttp3.OkHttpClient.Builder()
                 .connectTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -259,10 +268,12 @@ class IptvRepository(
                 .head()
                 .build()
             client.newCall(request).execute().use { response ->
-                response.isSuccessful || response.code in 200..399
+                val durationMs = System.currentTimeMillis() - startTime
+                val isSuccess = response.isSuccessful || response.code in 200..399
+                Pair(isSuccess, if (isSuccess) durationMs else 99999L)
             }
-        } catch (e: Exception) {
-            false
+        } catch (e: java.lang.Exception) {
+            Pair(false, 99999L)
         }
     }
 }

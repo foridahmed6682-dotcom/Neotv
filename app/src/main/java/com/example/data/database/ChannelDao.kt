@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChannelDao {
-    @Query("SELECT * FROM channels WHERE isActive = 1 ORDER BY country = 'Bangladesh' DESC, country = 'India' DESC, name ASC")
+    @Query("SELECT * FROM channels WHERE isActive = 1 ORDER BY country = 'Bangladesh' DESC, country = 'India' DESC, responseTimeMs ASC, name ASC")
     fun getAllChannelsFlow(): Flow<List<Channel>>
 
-    @Query("SELECT * FROM channels WHERE isActive = 1 AND category = :category ORDER BY country = 'Bangladesh' DESC, country = 'India' DESC, name ASC")
+    @Query("SELECT * FROM channels WHERE isActive = 1 AND category = :category ORDER BY country = 'Bangladesh' DESC, country = 'India' DESC, responseTimeMs ASC, name ASC")
     fun getChannelsByCategoryFlow(category: String): Flow<List<Channel>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -20,6 +20,9 @@ interface ChannelDao {
 
     @Query("UPDATE channels SET isActive = :isActive WHERE url = :url")
     suspend fun updateChannelStatus(url: String, isActive: Boolean)
+
+    @Query("UPDATE channels SET isActive = :isActive, responseTimeMs = :responseTimeMs WHERE url = :url")
+    suspend fun updateChannelValidation(url: String, isActive: Boolean, responseTimeMs: Long)
 
     @Query("DELETE FROM channels")
     suspend fun deleteAllChannels()

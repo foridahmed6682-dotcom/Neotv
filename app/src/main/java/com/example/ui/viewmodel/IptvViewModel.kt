@@ -239,10 +239,13 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                             channelsToCheck.forEach { channel ->
                                 launch {
                                     semaphore.withPermit {
-                                        val isLinkActive = repository.verifyChannelLink(channel.url)
+                                        val (isLinkActive, latencyMs) = repository.verifyChannelLinkWithLatency(channel.url)
                                         if (!isLinkActive) {
                                             Log.d("IptvViewModel", "Channel ${channel.name} is inactive. Masking off in Room.")
-                                            repository.updateChannelStatus(channel.url, false)
+                                            repository.updateChannelValidation(channel.url, false, 99999L)
+                                        } else {
+                                            Log.d("IptvViewModel", "Channel ${channel.name} is active (latency: ${latencyMs}ms). Updating Room.")
+                                            repository.updateChannelValidation(channel.url, true, latencyMs)
                                         }
                                     }
                                 }

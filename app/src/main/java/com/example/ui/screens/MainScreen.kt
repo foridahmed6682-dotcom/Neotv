@@ -549,12 +549,14 @@ fun HeaderSection(
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isCompact = configuration.screenWidthDp < 640
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFF0F172A)) // Premium Dark Slate base
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = if (isCompact) 8.dp else 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Styled Branded Theme App Label
@@ -562,37 +564,39 @@ fun HeaderSection(
             imageVector = Icons.Default.DesktopMac,
             contentDescription = "Live Logo",
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(if (isCompact) 24.dp else 28.dp)
         )
-        SpacerWidth(8)
+        SpacerWidth(if (isCompact) 4 else 8)
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "SLATE",
-                    fontSize = 18.sp,
+                    fontSize = if (isCompact) 15.sp else 18.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
                     letterSpacing = 1.sp
                 )
                 Text(
                     text = "IPTV",
-                    fontSize = 18.sp,
+                    fontSize = if (isCompact) 15.sp else 18.sp,
                     fontWeight = FontWeight.Light,
                     color = MaterialTheme.colorScheme.primary,
                     letterSpacing = 1.sp,
                     modifier = Modifier.padding(start = 2.dp)
                 )
             }
-            Text(
-                text = "Live Stream Hybrid TV Portal",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.Gray
-            )
+            if (!isCompact) {
+                Text(
+                    text = "Live Stream Hybrid TV Portal",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.Gray
+                )
+            }
         }
 
         if (selectedChannel != null) {
-            SpacerWidth(12)
+            SpacerWidth(if (isCompact) 6 else 12)
             var isFsFocused by remember { mutableStateOf(false) }
             Button(
                 onClick = onToggleFullscreen,
@@ -604,6 +608,7 @@ fun HeaderSection(
                     color = if (isFsFocused) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                 ),
                 shape = RoundedCornerShape(8.dp),
+                contentPadding = if (isCompact) androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp) else ButtonDefaults.ContentPadding,
                 modifier = Modifier
                     .onFocusChanged { isFsFocused = it.isFocused }
                     .focusable()
@@ -611,17 +616,19 @@ fun HeaderSection(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FullscreenIcon(tint = if (isFsFocused) Color.Black else Color.White)
-                    SpacerWidth(6)
-                    Text(
-                        text = "ফুল স্ক্রিন (Full Screen)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isFsFocused) Color.Black else Color.White
-                    )
+                    if (!isCompact) {
+                        SpacerWidth(6)
+                        Text(
+                            text = "ফুল স্ক্রিন (Full Screen)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isFsFocused) Color.Black else Color.White
+                        )
+                    }
                 }
             }
 
-            SpacerWidth(8)
+            SpacerWidth(if (isCompact) 4 else 8)
             var isBgFocused by remember { mutableStateOf(false) }
             Button(
                 onClick = onToggleBackgroundPlay,
@@ -645,6 +652,7 @@ fun HeaderSection(
                     }
                 ),
                 shape = RoundedCornerShape(8.dp),
+                contentPadding = if (isCompact) androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp) else ButtonDefaults.ContentPadding,
                 modifier = Modifier
                     .onFocusChanged { isBgFocused = it.isFocused }
                     .focusable()
@@ -660,19 +668,21 @@ fun HeaderSection(
                             Color.White
                         }
                     )
-                    SpacerWidth(6)
-                    Text(
-                        text = if (isBackgroundPlayEnabled) "ব্যাকগ্রাউন্ড প্লে (চালু)" else "ব্যাকগ্রাউন্ড প্লে (বন্ধ)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isBgFocused) {
-                            Color.Black 
-                        } else if (isBackgroundPlayEnabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            Color.White
-                        }
-                    )
+                    if (!isCompact) {
+                        SpacerWidth(6)
+                        Text(
+                            text = if (isBackgroundPlayEnabled) "ব্যাকগ্রাউন্ড প্লে (চালু)" else "ব্যাকগ্রাউন্ড প্লে (বন্ধ)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isBgFocused) {
+                                Color.Black 
+                            } else if (isBackgroundPlayEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                Color.White
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -914,7 +924,7 @@ fun ChannelSectionList(
     // Sort into Bangladesh, India and Global groupings for clean headers
     val bangladeshChannels = remember(channels) { channels.filter { it.country == "Bangladesh" } }
     val indiaChannels = remember(channels) { channels.filter { it.country == "India" } }
-    val globalChannels = remember(channels) { channels.filter { it.country == "Global" } }
+    val globalChannels = remember(channels) { channels.filter { it.country != "Bangladesh" && it.country != "India" } }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),

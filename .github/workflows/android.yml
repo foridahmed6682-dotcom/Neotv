@@ -55,8 +55,12 @@ jobs:
     - name: Build with Gradle
       run: gradle assembleDebug --no-daemon --stacktrace
 
+    - name: Rename APK to release-apk.apk
+      run: |
+        mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/release-apk.apk
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: release-apk
+        path: app/build/outputs/apk/debug/release-apk.apk

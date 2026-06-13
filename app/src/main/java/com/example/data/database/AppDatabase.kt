@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import com.example.data.model.Channel
 import com.example.data.model.Sponsor
 
-@Database(entities = [Channel::class, Sponsor::class], version = 2, exportSchema = false)
+@Database(entities = [Channel::class, Sponsor::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun channelDao(): ChannelDao
     abstract fun sponsorDao(): SponsorDao

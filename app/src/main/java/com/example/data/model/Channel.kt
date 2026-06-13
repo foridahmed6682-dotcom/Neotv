@@ -12,5 +12,6 @@ data class Channel(
     val country: String = "Global",
     val channelNumber: Int = 0,
     val isActive: Boolean = true,
-    val resolution: String = "720p"
+    val resolution: String = "720p",
+    val responseTimeMs: Long = 99999L
 )
