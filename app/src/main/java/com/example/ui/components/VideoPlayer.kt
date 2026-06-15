@@ -36,6 +36,7 @@ import androidx.media3.ui.PlayerView
 @Composable
 fun VideoPlayer(
     url: String,
+    selectedResolution: String = "Auto",
     modifier: Modifier = Modifier,
     isFullscreen: Boolean = false
 ) {
@@ -44,15 +45,37 @@ fun VideoPlayer(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var retryTrigger by remember { mutableStateOf(0) }
 
+    // Multi-resolution TrackSelector
+    val trackSelector = remember { androidx.media3.exoplayer.trackselection.DefaultTrackSelector(context) }
+
+    // Dynamically limit video track decoded dimensions on selection change
+    LaunchedEffect(selectedResolution) {
+        val parametersBuilder = trackSelector.parameters.buildUpon()
+        when (selectedResolution) {
+            "4K" -> parametersBuilder.setMaxVideoSize(3840, 2160)
+            "1080p" -> parametersBuilder.setMaxVideoSize(1920, 1080)
+            "720p" -> parametersBuilder.setMaxVideoSize(1280, 720)
+            "480p" -> parametersBuilder.setMaxVideoSize(854, 480)
+            "360p" -> parametersBuilder.setMaxVideoSize(640, 360)
+            else -> {
+                // Auto high resolution based on network speed
+                parametersBuilder.setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+            }
+        }
+        trackSelector.parameters = parametersBuilder.build()
+    }
+
     // Recreate or reconnect ExoPlayer when url or retryTrigger changes
     val exoPlayer = remember(url, retryTrigger) {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-            repeatMode = Player.REPEAT_MODE_OFF
-            val mediaItem = MediaItem.fromUri(url)
-            setMediaItem(mediaItem)
-            prepare()
-        }
+        ExoPlayer.Builder(context)
+            .setTrackSelector(trackSelector)
+            .build().apply {
+                playWhenReady = true
+                repeatMode = Player.REPEAT_MODE_OFF
+                val mediaItem = MediaItem.fromUri(url)
+                setMediaItem(mediaItem)
+                prepare()
+            }
     }
 
     DisposableEffect(exoPlayer) {
