@@ -24,17 +24,19 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     private val _googleUser = MutableStateFlow<GoogleUserInfo?>(null)
     val googleUser: StateFlow<GoogleUserInfo?> = _googleUser.asStateFlow()
 
-    fun signInWithGoogleSimulated(name: String, email: String, photoUrl: String) {
-        signInWithGoogleReal(name, email, photoUrl)
+    fun signInWithGoogleSimulated(name: String, email: String, photoUrl: String, role: String = "User") {
+        signInWithGoogleReal(name, email, photoUrl, role)
     }
 
-    fun signInWithGoogleReal(name: String, email: String, photoUrl: String) {
-        val user = GoogleUserInfo(name = name, email = email, photoUrl = photoUrl, isVip = true)
+    fun signInWithGoogleReal(name: String, email: String, photoUrl: String, role: String = "User") {
+        val finalRole = if (email == "foridahmed6682@gmail.com") "Admin" else role
+        val user = GoogleUserInfo(name = name, email = email, photoUrl = photoUrl, isVip = true, role = finalRole)
         _googleUser.value = user
         prefs.edit()
             .putString("email", email)
             .putString("name", name)
             .putString("photoUrl", photoUrl)
+            .putString("role", finalRole)
             .apply()
     }
 
@@ -97,12 +99,15 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         val savedEmail = prefs.getString("email", null)
         val savedName = prefs.getString("name", null)
         val savedPhoto = prefs.getString("photoUrl", null)
+        val savedRole = prefs.getString("role", null)
         if (savedEmail != null && savedName != null) {
+            val finalRole = if (savedEmail == "foridahmed6682@gmail.com") "Admin" else (savedRole ?: "User")
             _googleUser.value = GoogleUserInfo(
                 name = savedName,
                 email = savedEmail,
                 photoUrl = savedPhoto ?: "https://cdn-icons-png.flaticon.com/512/3172/3172605.png",
-                isVip = true
+                isVip = true,
+                role = finalRole
             )
         }
 
@@ -229,5 +234,6 @@ data class GoogleUserInfo(
     val name: String,
     val email: String,
     val photoUrl: String,
-    val isVip: Boolean = true
+    val isVip: Boolean = true,
+    val role: String = "User"
 )

@@ -1,19 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Outer TV frame -->
-    <path
-        android:fillColor="#38BDF8"
-        android:pathData="M24,32 h60 a8,8 0 0 1 8,8 v28 a8,8 0 0 1 -8,8 h-60 a8,8 0 0 1 -8,-8 v-28 a8,8 0 0 1 8,-8 z" />
-    <!-- TV inner screen -->
-    <path
-        android:fillColor="#0B0F19"
-        android:pathData="M28,36 h52 v20 h-52 z" />
-    <!-- TV Stand -->
-    <path
-        android:fillColor="#38BDF8"
-        android:pathData="M48,76 h12 v4 h-12 z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/neo_tv_logo"
+        android:gravity="center" />
+</layer-list>
